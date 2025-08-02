@@ -1,5 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import User from '../model/user.js';
 
 const auth = express.Router();
@@ -25,11 +26,59 @@ auth.post('/signup', async (req, res) => {
 
         await newUser.save();
 
-        res.status(201).json({ message: 'User registered successfully.' });
+        const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "1d" });
+
+        res.status(201).json({
+            message: 'User registered successfully.',
+            token: token
+        });
 
     } catch (error) {
-        res.status(500).json({ message: error.message});
+        res.status(500).json({ message: error.message });
     }
 });
+
+auth.post('/login', async (req, res) => {
+
+    try {
+        const { email, password } = req.body;
+        const token = req.cookies?.token;
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({
+                message: "USER DOESN'T EXIST",
+            });
+        }
+
+        const userPassword = user.password;
+        const checkPassword = await bcrypt.compare(password, userPassword);
+
+        if (checkPassword) {
+            const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+                expiresIn: "7d"
+            });
+            res
+                .cookie("token", token, {
+                    httpOnly: false,
+                    sameSite: "None",
+                    secure: true,
+                    maxAge: 24 * 60 * 60 * 1000,
+                })
+                .status(200).json({
+                    message: "LOGIN SUCCESSFUL",
+                });
+            return res;
+        } else {
+            return res.status(401).json({
+                message: "INVALID CREDENTIALS",
+            })
+        }
+    } catch (error) {
+        res.status(500).json({
+            message: error.message,
+        })
+    }
+})
 
 export default auth;
